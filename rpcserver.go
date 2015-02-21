@@ -48,6 +48,8 @@ import (
 	"github.com/btcsuite/btcwallet/txstore"
 	"github.com/btcsuite/btcwallet/waddrmgr"
 	"github.com/btcsuite/websocket"
+	// NOTICE the crucial import
+	_ "github.com/soapboxsys/ombudslib/rpcexten"
 )
 
 // Error types to simplify the reporting of specific categories of
@@ -1357,6 +1359,9 @@ var rpcHandlers = map[string]requestHandler{
 	"encryptwallet": Unsupported,
 	"move":          Unsupported,
 	"setaccount":    Unsupported,
+
+	// NOTICE extends the wallet functionality
+	"sendbulletin": SendBulletin,
 
 	// Extensions to the reference client JSON-RPC API
 	"exportwatchingwallet": ExportWatchingWallet,
