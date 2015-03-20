@@ -22,8 +22,8 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/btcsuite/btcwallet/walletdb"
-	_ "github.com/btcsuite/btcwallet/walletdb/bdb"
+	"github.com/soapboxsys/ombwallet/walletdb"
+	_ "github.com/soapboxsys/ombwallet/walletdb/bdb"
 )
 
 // dbType is the database type name for this driver.

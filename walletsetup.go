@@ -28,11 +28,11 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
+	"github.com/btcsuite/golangcrypto/ssh/terminal"
 	"github.com/soapboxsys/ombwallet/legacy/keystore"
 	"github.com/soapboxsys/ombwallet/waddrmgr"
 	"github.com/soapboxsys/ombwallet/walletdb"
 	_ "github.com/soapboxsys/ombwallet/walletdb/bdb"
-	"github.com/btcsuite/golangcrypto/ssh/terminal"
 )
 
 // promptConsoleList prompts the user with the given prefix, list of valid
@@ -401,6 +401,7 @@ func createWallet(cfg *config) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println("cant' the wallet...")
 
 	// Create the address manager.
 	namespace, err := db.Namespace(waddrmgrNamespaceKey)
