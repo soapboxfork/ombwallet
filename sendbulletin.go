@@ -8,10 +8,10 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-	"github.com/soapboxsys/ombwallet/chain"
-	"github.com/soapboxsys/ombwallet/txstore"
 	"github.com/soapboxsys/ombudslib/protocol/ombproto"
 	"github.com/soapboxsys/ombudslib/rpcexten"
+	"github.com/soapboxsys/ombwallet/chain"
+	"github.com/soapboxsys/ombwallet/txstore"
 )
 
 // TODO NOTICE
@@ -34,7 +34,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 	}
 	// NOTE checks to see if addr is in the wallet
 	//var waddr keystore.WalletAddress
-	_, err = w.KeyStore.Address(addr)
+	_, err = w.Manager.Address(addr)
 	if err != nil {
 		return nil, err
 	}
@@ -135,7 +135,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 			}
 		}
 
-		if err = signMsgTx(msgtx, inputs, w.KeyStore); err != nil {
+		if err = signMsgTx(msgtx, inputs, w.Manager); err != nil {
 			return nil, err
 		}
 
