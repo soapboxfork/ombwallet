@@ -34,18 +34,17 @@ import (
 	"sync"
 	"time"
 
-	"golang.org/x/crypto/ripemd160"
-
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcwallet/rename"
+	"github.com/btcsuite/golangcrypto/ripemd160"
 )
 
 const (
-	filename = "wallet.bin"
+	Filename = "wallet.bin"
 
 	// Length in bytes of KDF output.
 	kdfOutputBytes = 32
@@ -587,9 +586,9 @@ func New(dir string, desc string, passphrase []byte, net *chaincfg.Params,
 
 	// Create and fill key store.
 	s := &Store{
-		path: filepath.Join(dir, filename),
+		path: filepath.Join(dir, Filename),
 		dir:  dir,
-		file: filename,
+		file: Filename,
 		vers: VersCurrent,
 		net:  (*netParams)(net),
 		flags: walletFlags{
@@ -878,7 +877,7 @@ func (s *Store) WriteIfDirty() error {
 // be checked with os.IsNotExist to differentiate missing file errors from
 // others (including deserialization).
 func OpenDir(dir string) (*Store, error) {
-	path := filepath.Join(dir, filename)
+	path := filepath.Join(dir, Filename)
 	fi, err := os.OpenFile(path, os.O_RDONLY, 0)
 	if err != nil {
 		return nil, err
@@ -891,7 +890,7 @@ func OpenDir(dir string) (*Store, error) {
 	}
 	store.path = path
 	store.dir = dir
-	store.file = filename
+	store.file = Filename
 	return store, nil
 }
 

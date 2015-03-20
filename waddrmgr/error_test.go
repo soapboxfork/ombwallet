@@ -30,6 +30,7 @@ func TestErrorCodeStringer(t *testing.T) {
 		want string
 	}{
 		{waddrmgr.ErrDatabase, "ErrDatabase"},
+		{waddrmgr.ErrUpgrade, "ErrUpgrade"},
 		{waddrmgr.ErrKeyChain, "ErrKeyChain"},
 		{waddrmgr.ErrCrypto, "ErrCrypto"},
 		{waddrmgr.ErrInvalidKeyType, "ErrInvalidKeyType"},
@@ -42,7 +43,8 @@ func TestErrorCodeStringer(t *testing.T) {
 		{waddrmgr.ErrInvalidAccount, "ErrInvalidAccount"},
 		{waddrmgr.ErrAddressNotFound, "ErrAddressNotFound"},
 		{waddrmgr.ErrAccountNotFound, "ErrAccountNotFound"},
-		{waddrmgr.ErrDuplicate, "ErrDuplicate"},
+		{waddrmgr.ErrDuplicateAddress, "ErrDuplicateAddress"},
+		{waddrmgr.ErrDuplicateAccount, "ErrDuplicateAccount"},
 		{waddrmgr.ErrTooManyAddresses, "ErrTooManyAddresses"},
 		{waddrmgr.ErrWrongPassphrase, "ErrWrongPassphrase"},
 		{waddrmgr.ErrWrongNet, "ErrWrongNet"},

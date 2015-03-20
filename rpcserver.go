@@ -45,8 +45,8 @@ import (
 	"github.com/btcsuite/btcrpcclient"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/keystore"
 	"github.com/btcsuite/btcwallet/txstore"
+	"github.com/btcsuite/btcwallet/waddrmgr"
 	"github.com/btcsuite/websocket"
 	// NOTICE the crucial import
 	_ "github.com/soapboxsys/ombudslib/rpcexten"
@@ -91,13 +91,19 @@ var (
 		errors.New("minconf must be positive"),
 	}
 
-	ErrAddressNotInWallet = InvalidAddressOrKeyError{
-		errors.New("address not found in wallet"),
+	ErrAddressNotInWallet = btcjson.Error{
+		Code:    btcjson.ErrWallet.Code,
+		Message: "address not found in wallet",
 	}
 
 	ErrNoAccountSupport = btcjson.Error{
 		Code:    btcjson.ErrWalletInvalidAccountName.Code,
 		Message: "btcwallet does not support non-default accounts",
+	}
+
+	ErrAccountNameNotFound = btcjson.Error{
+		Code:    btcjson.ErrWalletInvalidAccountName.Code,
+		Message: "account name not found",
 	}
 
 	ErrUnloadedWallet = btcjson.Error{
@@ -165,6 +171,41 @@ func (c *websocketClient) send(b []byte) error {
 	case <-c.quit:
 		return errors.New("websocket client disconnected")
 	}
+}
+
+// isManagerLockedError returns whether or not the passed error is due to the
+// address manager being locked.
+func isManagerLockedError(err error) bool {
+	merr, ok := err.(waddrmgr.ManagerError)
+	return ok && merr.ErrorCode == waddrmgr.ErrLocked
+}
+
+// isManagerWrongPassphraseError returns whether or not the passed error is due
+// to the address manager being provided with an invalid passprhase.
+func isManagerWrongPassphraseError(err error) bool {
+	merr, ok := err.(waddrmgr.ManagerError)
+	return ok && merr.ErrorCode == waddrmgr.ErrWrongPassphrase
+}
+
+// isManagerDuplicateAddressError returns whether or not the passed error is due to a
+// duplicate item being provided to the address manager.
+func isManagerDuplicateAddressError(err error) bool {
+	merr, ok := err.(waddrmgr.ManagerError)
+	return ok && merr.ErrorCode == waddrmgr.ErrDuplicateAddress
+}
+
+// isManagerAddressNotFoundError returns whether or not the passed error is due to a
+// the address not being found.
+func isManagerAddressNotFoundError(err error) bool {
+	merr, ok := err.(waddrmgr.ManagerError)
+	return ok && merr.ErrorCode == waddrmgr.ErrAddressNotFound
+}
+
+// isManagerAccountNotFoundError returns whether or not the passed error is due
+// to the account not being found.
+func isManagerAccountNotFoundError(err error) bool {
+	merr, ok := err.(waddrmgr.ManagerError)
+	return ok && merr.ErrorCode == waddrmgr.ErrAccountNotFound
 }
 
 // parseListeners splits the list of listen addresses passed in addrs into
@@ -267,18 +308,17 @@ type rpcServer struct {
 
 	// Channels read from other components from which notifications are
 	// created.
-	connectedBlocks       <-chan keystore.BlockStamp
-	disconnectedBlocks    <-chan keystore.BlockStamp
-	newCredits            <-chan txstore.Credit
-	newDebits             <-chan txstore.Debits
-	minedCredits          <-chan txstore.Credit
-	minedDebits           <-chan txstore.Debits
-	keystoreLocked        <-chan bool
-	confirmedBalance      <-chan btcutil.Amount
-	unconfirmedBalance    <-chan btcutil.Amount
-	chainServerConnected  <-chan bool
-	registerWalletNtfns   chan struct{}
-	registerChainSvrNtfns chan struct{}
+	connectedBlocks    <-chan waddrmgr.BlockStamp
+	disconnectedBlocks <-chan waddrmgr.BlockStamp
+	newCredits         <-chan txstore.Credit
+	newDebits          <-chan txstore.Debits
+	minedCredits       <-chan txstore.Credit
+	minedDebits        <-chan txstore.Debits
+	managerLocked      <-chan bool
+	confirmedBalance   <-chan btcutil.Amount
+	unconfirmedBalance <-chan btcutil.Amount
+	//chainServerConnected  <-chan bool
+	registerWalletNtfns chan struct{}
 
 	// enqueueNotification and dequeueNotification handle both sides of an
 	// infinitly growing queue for websocket client notifications.
@@ -313,7 +353,6 @@ func newRPCServer(listenAddrs []string, maxPost, maxWebsockets int64) (*rpcServe
 		registerWSC:             make(chan *websocketClient),
 		unregisterWSC:           make(chan *websocketClient),
 		registerWalletNtfns:     make(chan struct{}),
-		registerChainSvrNtfns:   make(chan struct{}),
 		enqueueNotification:     make(chan wsClientNotification),
 		dequeueNotification:     make(chan wsClientNotification),
 		notificationHandlerQuit: make(chan struct{}),
@@ -542,10 +581,6 @@ func (s *rpcServer) SetWallet(wallet *Wallet) {
 		// With both the wallet and chain server set, all handlers are
 		// ok to run.
 		s.handlerLookup = lookupAnyHandler
-
-		// Make sure already connected websocket clients get a notification
-		// if the chain RPC client connection is set and connected.
-		s.chainSvr.NotifyConnected()
 	}
 }
 
@@ -559,7 +594,6 @@ func (s *rpcServer) SetChainServer(chainSvr *chain.Client) {
 	defer s.handlerLock.Unlock()
 
 	s.chainSvr = chainSvr
-	s.registerChainSvrNtfns <- struct{}{}
 
 	if s.wallet != nil {
 		// If the wallet had already been set, there's no reason to keep
@@ -578,8 +612,8 @@ func (s *rpcServer) SetChainServer(chainSvr *chain.Client) {
 // a chain server request that is handled by passing the request down to btcd.
 //
 // NOTE: These handlers do not handle special cases, such as the authenticate
-// and createencryptedwallet methods.  Each of these must be checked
-// beforehand (the method is already known) and handled accordingly.
+// method.  Each of these must be checked beforehand (the method is already
+// known) and handled accordingly.
 func (s *rpcServer) HandlerClosure(method string) requestHandlerClosure {
 	s.handlerLock.Lock()
 	defer s.handlerLock.Unlock()
@@ -802,19 +836,6 @@ out:
 			}
 
 			switch raw.Method {
-			case "createencryptedwallet":
-				result, err := s.handleCreateEncryptedWallet(request)
-				resp := makeResponse(raw.ID, result, err)
-				mresp, err := json.Marshal(resp)
-				// Expected to never fail.
-				if err != nil {
-					panic(err)
-				}
-				err = wsc.send(mresp)
-				if err != nil {
-					break out
-				}
-
 			case "stop":
 				s.Stop()
 				resp := makeResponse(raw.ID,
@@ -931,13 +952,6 @@ func (s *rpcServer) WebsocketClientRPC(wsc *websocketClient) {
 		return
 	}
 
-	// TODO(jrick): this is crappy. kill it.
-	s.handlerLock.Lock()
-	if s.chainSvr != nil {
-		s.chainSvr.NotifyConnected()
-	}
-	s.handlerLock.Unlock()
-
 	// WebsocketClientRead is intentionally not run with the waitgroup
 	// so it is ignored during shutdown.  This is to prevent a hang during
 	// shutdown where the goroutine is blocked on a read of the
@@ -988,17 +1002,13 @@ func (s *rpcServer) PostClientRPC(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Create the response and error from the request.  Three special cases
-	// are handled for the authenticate, createencryptedwallet, and stop
-	// request methods.
+	// Create the response and error from the request.  Two special cases
+	// are handled for the authenticate and stop request methods.
 	var resp btcjson.Reply
 	switch raw.Method {
 	case "authenticate":
 		// Drop it.
 		return
-	case "createencryptedwallet":
-		result, err := s.handleCreateEncryptedWallet(rpcRequest)
-		resp = makeResponse(raw.ID, result, err)
 	case "stop":
 		s.Stop()
 		resp = makeResponse(raw.ID, "btcwallet stopping.", nil)
@@ -1026,13 +1036,13 @@ type (
 		notificationCmds(w *Wallet) []btcjson.Cmd
 	}
 
-	blockConnected    keystore.BlockStamp
-	blockDisconnected keystore.BlockStamp
+	blockConnected    waddrmgr.BlockStamp
+	blockDisconnected waddrmgr.BlockStamp
 
 	txCredit txstore.Credit
 	txDebit  txstore.Debits
 
-	keystoreLocked bool
+	managerLocked bool
 
 	confirmedBalance   btcutil.Amount
 	unconfirmedBalance btcutil.Amount
@@ -1051,30 +1061,25 @@ func (b blockDisconnected) notificationCmds(w *Wallet) []btcjson.Cmd {
 }
 
 func (c txCredit) notificationCmds(w *Wallet) []btcjson.Cmd {
-	bs, err := w.chainSvr.BlockStamp()
-	if err != nil {
-		log.Warnf("Dropping tx credit notification due to unknown "+
-			"chain height: %v", err)
-		return nil
+	blk := w.Manager.SyncedTo()
+	acctName := waddrmgr.DefaultAccountName
+	if creditAccount, err := w.CreditAccount(txstore.Credit(c)); err == nil {
+		// acctName is defaulted to DefaultAccountName in case of an error
+		acctName, _ = w.Manager.AccountName(creditAccount)
 	}
-	ltr, err := txstore.Credit(c).ToJSON("", bs.Height, activeNet.Params)
+	ltr, err := txstore.Credit(c).ToJSON(acctName, blk.Height, activeNet.Params)
 	if err != nil {
 		log.Errorf("Cannot create notification for transaction "+
 			"credit: %v", err)
 		return nil
 	}
-	n := btcws.NewTxNtfn("", &ltr)
+	n := btcws.NewTxNtfn(acctName, &ltr)
 	return []btcjson.Cmd{n}
 }
 
 func (d txDebit) notificationCmds(w *Wallet) []btcjson.Cmd {
-	bs, err := w.chainSvr.BlockStamp()
-	if err != nil {
-		log.Warnf("Dropping tx debit notification due to unknown "+
-			"chain height: %v", err)
-		return nil
-	}
-	ltrs, err := txstore.Debits(d).ToJSON("", bs.Height, activeNet.Params)
+	blk := w.Manager.SyncedTo()
+	ltrs, err := txstore.Debits(d).ToJSON("", blk.Height, activeNet.Params)
 	if err != nil {
 		log.Errorf("Cannot create notification for transaction "+
 			"debits: %v", err)
@@ -1087,20 +1092,20 @@ func (d txDebit) notificationCmds(w *Wallet) []btcjson.Cmd {
 	return ns
 }
 
-func (kl keystoreLocked) notificationCmds(w *Wallet) []btcjson.Cmd {
-	n := btcws.NewWalletLockStateNtfn("", bool(kl))
+func (l managerLocked) notificationCmds(w *Wallet) []btcjson.Cmd {
+	n := btcws.NewWalletLockStateNtfn("", bool(l))
 	return []btcjson.Cmd{n}
 }
 
 func (b confirmedBalance) notificationCmds(w *Wallet) []btcjson.Cmd {
 	n := btcws.NewAccountBalanceNtfn("",
-		btcutil.Amount(b).ToUnit(btcutil.AmountBTC), true)
+		btcutil.Amount(b).ToBTC(), true)
 	return []btcjson.Cmd{n}
 }
 
 func (b unconfirmedBalance) notificationCmds(w *Wallet) []btcjson.Cmd {
 	n := btcws.NewAccountBalanceNtfn("",
-		btcutil.Amount(b).ToUnit(btcutil.AmountBTC), false)
+		btcutil.Amount(b).ToBTC(), false)
 	return []btcjson.Cmd{n}
 }
 
@@ -1125,14 +1130,12 @@ out:
 			s.enqueueNotification <- txCredit(n)
 		case n := <-s.minedDebits:
 			s.enqueueNotification <- txDebit(n)
-		case n := <-s.keystoreLocked:
-			s.enqueueNotification <- keystoreLocked(n)
+		case n := <-s.managerLocked:
+			s.enqueueNotification <- managerLocked(n)
 		case n := <-s.confirmedBalance:
 			s.enqueueNotification <- confirmedBalance(n)
 		case n := <-s.unconfirmedBalance:
 			s.enqueueNotification <- unconfirmedBalance(n)
-		case n := <-s.chainServerConnected:
-			s.enqueueNotification <- btcdConnected(n)
 
 		// Registration of all notifications is done by the handler so
 		// it doesn't require another rpcServer mutex.
@@ -1175,9 +1178,9 @@ out:
 					"debit notifications: %v", err)
 				continue
 			}
-			keystoreLocked, err := s.wallet.ListenKeystoreLockStatus()
+			managerLocked, err := s.wallet.ListenLockStatus()
 			if err != nil {
-				log.Errorf("Could not register for keystore "+
+				log.Errorf("Could not register for manager "+
 					"lock state changes: %v", err)
 				continue
 			}
@@ -1199,27 +1202,9 @@ out:
 			s.newDebits = newDebits
 			s.minedCredits = minedCredits
 			s.minedDebits = minedDebits
-			s.keystoreLocked = keystoreLocked
+			s.managerLocked = managerLocked
 			s.confirmedBalance = confirmedBalance
 			s.unconfirmedBalance = unconfirmedBalance
-
-		case <-s.registerChainSvrNtfns:
-			chainServerConnected, err := s.chainSvr.ListenConnected()
-			if err != nil {
-				log.Errorf("Could not register for chain server "+
-					"connection changes: %v", err)
-				continue
-			}
-			s.chainServerConnected = chainServerConnected
-
-			// Make sure already connected websocket clients get a
-			// notification for the current client connection state.
-			//
-			// TODO(jrick): I am appalled by doing this but trying
-			// not to change how notifications work for the moment.
-			// A revamped notification API without this horror will
-			// be implemented soon.
-			go s.chainSvr.NotifyConnected()
 
 		case <-s.quit:
 			break out
@@ -1241,16 +1226,14 @@ func (s *rpcServer) drainNotifications() {
 		case <-s.minedDebits:
 		case <-s.confirmedBalance:
 		case <-s.unconfirmedBalance:
-		case <-s.chainServerConnected:
 		case <-s.registerWalletNtfns:
-		case <-s.registerChainSvrNtfns:
 		}
 	}
 }
 
 // notificationQueue manages an infinitly-growing queue of notifications that
 // wallet websocket clients may be interested in.  It quits when the
-// enqueueNotifiation channel is closed, dropping any still pending
+// enqueueNotification channel is closed, dropping any still pending
 // notifications.
 func (s *rpcServer) notificationQueue() {
 	var q []wsClientNotification
@@ -1355,6 +1338,8 @@ var rpcHandlers = map[string]requestHandler{
 	"getaccountaddress":      GetAccountAddress,
 	"getaddressesbyaccount":  GetAddressesByAccount,
 	"getbalance":             GetBalance,
+	"getbestblockhash":       GetBestBlockHash,
+	"getblockcount":          GetBlockCount,
 	"getinfo":                GetInfo,
 	"getnewaddress":          GetNewAddress,
 	"getrawchangeaddress":    GetRawChangeAddress,
@@ -1400,7 +1385,9 @@ var rpcHandlers = map[string]requestHandler{
 	"sendbulletin": SendBulletin,
 
 	// Extensions to the reference client JSON-RPC API
+	"createnewaccount":     CreateNewAccount,
 	"exportwatchingwallet": ExportWatchingWallet,
+	"getbestblock":         GetBestBlock,
 	// This was an extension but the reference implementation added it as
 	// well, but with a different API (no account parameter).  It's listed
 	// here because it hasn't been update to use the reference
@@ -1408,7 +1395,7 @@ var rpcHandlers = map[string]requestHandler{
 	"getunconfirmedbalance":   GetUnconfirmedBalance,
 	"listaddresstransactions": ListAddressTransactions,
 	"listalltransactions":     ListAllTransactions,
-	"recoveraddresses":        RecoverAddresses,
+	"renameaccount":           RenameAccount,
 	"walletislocked":          WalletIsLocked,
 }
 
@@ -1554,12 +1541,12 @@ func makeMultiSigScript(w *Wallet, keys []string, nRequired int) ([]byte, error)
 		case *btcutil.AddressPubKey:
 			keysesPrecious[i] = addr
 		case *btcutil.AddressPubKeyHash:
-			ainfo, err := w.KeyStore.Address(addr)
+			ainfo, err := w.Manager.Address(addr)
 			if err != nil {
 				return nil, err
 			}
 
-			apkinfo := ainfo.(keystore.PubKeyAddress)
+			apkinfo := ainfo.(waddrmgr.ManagedPubKeyAddress)
 
 			// This will be an addresspubkey
 			a, err := btcutil.DecodeAddress(apkinfo.ExportPubKey(),
@@ -1594,20 +1581,17 @@ func AddMultiSigAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (in
 	}
 
 	// TODO(oga) blockstamp current block?
-	address, err := w.KeyStore.ImportScript(script,
-		&keystore.BlockStamp{})
+	bs := &waddrmgr.BlockStamp{
+		Hash:   *activeNet.Params.GenesisHash,
+		Height: 0,
+	}
+
+	addr, err := w.Manager.ImportScript(script, bs)
 	if err != nil {
 		return nil, err
 	}
 
-	// Write wallet with imported multisig address to disk.
-	w.KeyStore.MarkDirty()
-	err = w.KeyStore.WriteIfDirty()
-	if err != nil {
-		return nil, fmt.Errorf("account write failed: %v", err)
-	}
-
-	return address.EncodeAddress(), nil
+	return addr.Address().EncodeAddress(), nil
 }
 
 // CreateMultiSig handles an createmultisig request by returning a
@@ -1644,7 +1628,7 @@ func DumpPrivKey(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface
 	}
 
 	key, err := w.DumpWIFPrivateKey(addr)
-	if err == keystore.ErrLocked {
+	if isManagerLockedError(err) {
 		// Address was found, but the private key isn't
 		// accessible.
 		return nil, btcjson.ErrWalletUnlockNeeded
@@ -1657,9 +1641,10 @@ func DumpPrivKey(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface
 // TODO: finish this to match bitcoind by writing the dump to a file.
 func DumpWallet(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	keys, err := w.DumpPrivKeys()
-	if err == keystore.ErrLocked {
+	if isManagerLockedError(err) {
 		return nil, btcjson.ErrWalletUnlockNeeded
 	}
+
 	return keys, err
 }
 
@@ -1676,12 +1661,7 @@ func ExportWatchingWallet(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (
 		return nil, err
 	}
 
-	wa, err := w.ExportWatchingWallet()
-	if err != nil {
-		return nil, err
-	}
-
-	return wa.exportBase64()
+	return w.ExportWatchingWallet()
 }
 
 // GetAddressesByAccount handles a getaddressesbyaccount request by returning
@@ -1690,12 +1670,22 @@ func ExportWatchingWallet(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (
 func GetAddressesByAccount(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcjson.GetAddressesByAccountCmd)
 
-	err := checkAccountName(cmd.Account)
+	account, err := w.Manager.LookupAccount(cmd.Account)
 	if err != nil {
 		return nil, err
 	}
 
-	return w.SortedActivePaymentAddresses(), nil
+	addrs, err := w.Manager.AllAccountAddresses(account)
+	if err != nil {
+		return nil, err
+	}
+
+	addrStrs := make([]string, len(addrs))
+	for i, addr := range addrs {
+		addrStrs[i] = addr.Address().EncodeAddress()
+	}
+
+	return addrStrs, nil
 }
 
 // GetBalance handles a getbalance request by returning the balance for an
@@ -1704,22 +1694,47 @@ func GetAddressesByAccount(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) 
 func GetBalance(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcjson.GetBalanceCmd)
 
-	var account string
-	if cmd.Account != nil {
-		account = *cmd.Account
+	var balance btcutil.Amount
+	var account uint32
+	var err error
+	if cmd.Account == nil || *cmd.Account == "*" {
+		balance, err = w.CalculateBalance(cmd.MinConf)
+	} else {
+		account, err = w.Manager.LookupAccount(*cmd.Account)
+		if err != nil {
+			return nil, err
+		}
+		balance, err = w.CalculateAccountBalance(account, cmd.MinConf)
 	}
-
-	err := checkAccountName(account)
 	if err != nil {
 		return nil, err
 	}
+	return balance.ToBTC(), nil
+}
 
-	balance, err := w.CalculateBalance(cmd.MinConf)
-	if err != nil {
-		return nil, err
+// GetBestBlock handles a getbestblock request by returning a JSON object
+// with the height and hash of the most recently processed block.
+func GetBestBlock(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	blk := w.Manager.SyncedTo()
+	result := &btcws.GetBestBlockResult{
+		Hash:   blk.Hash.String(),
+		Height: blk.Height,
 	}
+	return result, nil
+}
 
-	return balance.ToUnit(btcutil.AmountBTC), nil
+// GetBestBlockHash handles a getbestblockhash request by returning the hash
+// of the most recently processed block.
+func GetBestBlockHash(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	blk := w.Manager.SyncedTo()
+	return blk.Hash.String(), nil
+}
+
+// GetBlockCount handles a getblockcount request by returning the chain height
+// of the most recently processed block.
+func GetBlockCount(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	blk := w.Manager.SyncedTo()
+	return blk.Height, nil
 }
 
 // GetInfo handles a getinfo request by returning the a structure containing
@@ -1738,12 +1753,14 @@ func GetInfo(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, 
 		return nil, err
 	}
 
-	info.WalletVersion = int32(keystore.VersCurrent.Uint32())
-	info.Balance = bal.ToUnit(btcutil.AmountBTC)
+	// TODO(davec): This should probably have a database version as opposed
+	// to using the manager version.
+	info.WalletVersion = int32(waddrmgr.LatestMgrVersion)
+	info.Balance = bal.ToBTC()
 	// Keypool times are not tracked. set to current time.
 	info.KeypoolOldest = time.Now().Unix()
 	info.KeypoolSize = int32(cfg.KeypoolSize)
-	info.PaytxFee = w.FeeIncrement.ToUnit(btcutil.AmountBTC)
+	info.PaytxFee = w.FeeIncrement.ToBTC()
 	// We don't set the following since they don't make much sense in the
 	// wallet architecture:
 	//  - unlocked_until
@@ -1763,13 +1780,17 @@ func GetAccount(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{
 		return nil, btcjson.ErrInvalidAddressOrKey
 	}
 
-	// If it is in the wallet, we consider it part of the default account.
-	_, err = w.KeyStore.Address(addr)
+	// Fetch the associated account
+	account, err := w.Manager.AddrAccount(addr)
 	if err != nil {
-		return nil, btcjson.ErrInvalidAddressOrKey
+		return nil, ErrAddressNotInWallet
 	}
 
-	return "", nil
+	acctName, err := w.Manager.AccountName(account)
+	if err != nil {
+		return nil, ErrAccountNameNotFound
+	}
+	return acctName, nil
 }
 
 // GetAccountAddress handles a getaccountaddress by returning the most
@@ -1781,12 +1802,11 @@ func GetAccount(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{
 func GetAccountAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcjson.GetAccountAddressCmd)
 
-	err := checkDefaultAccount(cmd.Account)
+	account, err := w.Manager.LookupAccount(cmd.Account)
 	if err != nil {
 		return nil, err
 	}
-
-	addr, err := w.CurrentAddress()
+	addr, err := w.CurrentAddress(account)
 	if err != nil {
 		return nil, err
 	}
@@ -1799,21 +1819,21 @@ func GetAccountAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (int
 func GetUnconfirmedBalance(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcws.GetUnconfirmedBalanceCmd)
 
-	err := checkAccountName(cmd.Account)
+	account, err := w.Manager.LookupAccount(cmd.Account)
 	if err != nil {
 		return nil, err
 	}
 
-	unconfirmed, err := w.CalculateBalance(0)
+	unconfirmed, err := w.CalculateAccountBalance(account, 0)
 	if err != nil {
 		return nil, err
 	}
-	confirmed, err := w.CalculateBalance(1)
+	confirmed, err := w.CalculateAccountBalance(account, 1)
 	if err != nil {
 		return nil, err
 	}
 
-	return (unconfirmed - confirmed).ToUnit(btcutil.AmountBTC), nil
+	return (unconfirmed - confirmed).ToBTC(), nil
 }
 
 // ImportPrivKey handles an importprivkey request by parsing
@@ -1833,17 +1853,16 @@ func ImportPrivKey(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interfa
 	}
 
 	// Import the private key, handling any errors.
-	_, err = w.ImportPrivateKey(wif, &keystore.BlockStamp{}, cmd.Rescan)
-	switch err {
-	case keystore.ErrDuplicate:
+	_, err = w.ImportPrivateKey(wif, nil, cmd.Rescan)
+	switch {
+	case isManagerDuplicateAddressError(err):
 		// Do not return duplicate key errors to the client.
 		return nil, nil
-	case keystore.ErrLocked:
+	case isManagerLockedError(err):
 		return nil, btcjson.ErrWalletUnlockNeeded
-	default:
-		// If the import was successful, reply with nil.
-		return nil, err
 	}
+
+	return nil, err
 }
 
 // KeypoolRefill handles the keypoolrefill command. Since we handle the keypool
@@ -1852,18 +1871,61 @@ func KeypoolRefill(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interfa
 	return nil, nil
 }
 
-// GetNewAddress handlesa getnewaddress request by returning a new
-// address for an account.  If the account does not exist or the keypool
-// ran out with a locked wallet, an appropiate error is returned.
+// CreateNewAccount handles a createnewaccount request by creating and
+// returning a new account. If the last account has no transaction history
+// as per BIP 0044 a new account cannot be created so an error will be returned.
+func CreateNewAccount(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	cmd := icmd.(*btcws.CreateNewAccountCmd)
+
+	// Check that we are within the maximum allowed non-empty accounts limit.
+	account, err := w.Manager.LastAccount()
+	if err != nil {
+		return nil, err
+	}
+	if account > maxEmptyAccounts {
+		used, err := w.AccountUsed(account)
+		if err != nil {
+			return nil, err
+		}
+		if !used {
+			return nil, errors.New("cannot create account: " +
+				"previous account has no transaction history")
+		}
+	}
+
+	_, err = w.Manager.NewAccount(cmd.Account)
+	if isManagerLockedError(err) {
+		return nil, btcjson.ErrWalletUnlockNeeded
+	}
+	return nil, err
+}
+
+// RenameAccount handles a renameaccount request by renaming an account.
+// If the account does not exist an appropiate error will be returned.
+func RenameAccount(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	cmd := icmd.(*btcws.RenameAccountCmd)
+	// Check that given account exists
+	account, err := w.Manager.LookupAccount(cmd.OldAccount)
+	if err != nil {
+		return nil, err
+	}
+	return nil, w.Manager.RenameAccount(account, cmd.NewAccount)
+}
+
+// GetNewAddress handles a getnewaddress request by returning a new
+// address for an account.  If the account does not exist an appropiate
+// error is returned.
+// TODO: Follow BIP 0044 and warn if number of unused addresses exceeds
+// the gap limit.
 func GetNewAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcjson.GetNewAddressCmd)
 
-	err := checkDefaultAccount(cmd.Account)
+	account, err := w.Manager.LookupAccount(cmd.Account)
 	if err != nil {
 		return nil, err
 	}
 
-	addr, err := w.NewAddress()
+	addr, err := w.NewAddress(account)
 	if err != nil {
 		return nil, err
 	}
@@ -1878,7 +1940,12 @@ func GetNewAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interfa
 // Note: bitcoind allows specifying the account as an optional parameter,
 // but ignores the parameter.
 func GetRawChangeAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
-	addr, err := w.NewChangeAddress()
+	cmd := icmd.(*btcjson.GetRawChangeAddressCmd)
+	account, err := w.Manager.LookupAccount(cmd.Account)
+	if err != nil {
+		return nil, err
+	}
+	addr, err := w.NewChangeAddress(account)
 	if err != nil {
 		return nil, err
 	}
@@ -1892,17 +1959,17 @@ func GetRawChangeAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (i
 func GetReceivedByAccount(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcjson.GetReceivedByAccountCmd)
 
-	err := checkAccountName(cmd.Account)
+	account, err := w.Manager.LookupAccount(cmd.Account)
 	if err != nil {
 		return nil, err
 	}
 
-	bal, err := w.TotalReceived(cmd.MinConf)
+	bal, _, err := w.TotalReceivedForAccount(account, cmd.MinConf)
 	if err != nil {
 		return nil, err
 	}
 
-	return bal.ToUnit(btcutil.AmountBTC), nil
+	return bal.ToBTC(), nil
 }
 
 // GetReceivedByAddress handles a getreceivedbyaddress request by returning
@@ -1919,7 +1986,7 @@ func GetReceivedByAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (
 		return nil, err
 	}
 
-	return total.ToUnit(btcutil.AmountBTC), nil
+	return total.ToBTC(), nil
 }
 
 // GetTransaction handles a gettransaction request by returning details about
@@ -1937,10 +2004,7 @@ func GetTransaction(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interf
 		return nil, btcjson.ErrNoTxInfo
 	}
 
-	bs, err := w.SyncedChainTip()
-	if err != nil {
-		return nil, err
-	}
+	blk := w.Manager.SyncedTo()
 
 	var txBuf bytes.Buffer
 	txBuf.Grow(record.Tx().MsgTx().SerializeSize())
@@ -1967,7 +2031,7 @@ func GetTransaction(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interf
 		ret.BlockIndex = int64(record.Tx().Index())
 		ret.BlockHash = txBlock.Hash.String()
 		ret.BlockTime = txBlock.Time.Unix()
-		ret.Confirmations = int64(record.Confirmations(bs.Height))
+		ret.Confirmations = int64(record.Confirmations(blk.Height))
 	}
 
 	credits := record.Credits()
@@ -1982,11 +2046,11 @@ func GetTransaction(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interf
 		ret.Details = make([]btcjson.GetTransactionDetailsResult, 1, len(credits)+1)
 
 		details := btcjson.GetTransactionDetailsResult{
-			Account:  "",
+			Account:  waddrmgr.DefaultAccountName,
 			Category: "send",
 			// negative since it is a send
-			Amount: (-debits.OutputAmount(true)).ToUnit(btcutil.AmountBTC),
-			Fee:    debits.Fee().ToUnit(btcutil.AmountBTC),
+			Amount: (-debits.OutputAmount(true)).ToBTC(),
+			Fee:    debits.Fee().ToBTC(),
 		}
 		targetAddr = &details.Address
 		ret.Details[0] = details
@@ -2017,14 +2081,14 @@ func GetTransaction(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interf
 		}
 
 		ret.Details = append(ret.Details, btcjson.GetTransactionDetailsResult{
-			Account:  "",
-			Category: cred.Category(bs.Height).String(),
-			Amount:   cred.Amount().ToUnit(btcutil.AmountBTC),
+			Account:  waddrmgr.DefaultAccountName,
+			Category: cred.Category(blk.Height).String(),
+			Amount:   cred.Amount().ToBTC(),
 			Address:  addr,
 		})
 	}
 
-	ret.Amount = creditAmount.ToUnit(btcutil.AmountBTC)
+	ret.Amount = creditAmount.ToBTC()
 	return ret, nil
 }
 
@@ -2033,13 +2097,24 @@ func GetTransaction(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interf
 func ListAccounts(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcjson.ListAccountsCmd)
 
-	bal, err := w.CalculateBalance(cmd.MinConf)
+	accountBalances := map[string]float64{}
+	accounts, err := w.Manager.AllAccounts()
 	if err != nil {
 		return nil, err
 	}
-
+	for _, account := range accounts {
+		acctName, err := w.Manager.AccountName(account)
+		if err != nil {
+			return nil, ErrAccountNameNotFound
+		}
+		bal, err := w.CalculateAccountBalance(account, cmd.MinConf)
+		if err != nil {
+			return nil, err
+		}
+		accountBalances[acctName] = bal.ToBTC()
+	}
 	// Return the map.  This will be marshaled into a JSON object.
-	return map[string]float64{"": bal.ToUnit(btcutil.AmountBTC)}, nil
+	return accountBalances, nil
 }
 
 // ListLockUnspent handles a listlockunspent request by returning an slice of
@@ -2058,39 +2133,29 @@ func ListLockUnspent(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (inter
 //             default: one;
 //  "includeempty": whether or not to include addresses that have no transactions -
 //                  default: false.
-// Since btcwallet doesn't implement account support yet, only the default account ""
-// will be returned
 func ListReceivedByAccount(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcjson.ListReceivedByAccountCmd)
 
-	bs, err := w.SyncedChainTip()
+	accounts, err := w.Manager.AllAccounts()
 	if err != nil {
 		return nil, err
 	}
 
-	// Total amount received.
-	var amount btcutil.Amount
-
-	// Number of confirmations of the last transaction.
-	var confirmations int32
-
-	for _, record := range w.TxStore.Records() {
-		for _, credit := range record.Credits() {
-			if !credit.Confirmed(cmd.MinConf, bs.Height) {
-				// Not enough confirmations, skip the current block.
-				continue
-			}
-			amount += credit.Amount()
-			confirmations = credit.Confirmations(bs.Height)
+	ret := make([]btcjson.ListReceivedByAccountResult, 0, len(accounts))
+	for _, account := range accounts {
+		acctName, err := w.Manager.AccountName(account)
+		if err != nil {
+			return nil, ErrAccountNameNotFound
 		}
-	}
-
-	ret := []btcjson.ListReceivedByAccountResult{
-		{
-			Account:       "",
-			Amount:        amount.ToUnit(btcutil.AmountBTC),
+		bal, confirmations, err := w.TotalReceivedForAccount(account, cmd.MinConf)
+		if err != nil {
+			return nil, err
+		}
+		ret = append(ret, btcjson.ListReceivedByAccountResult{
+			Account:       acctName,
+			Amount:        bal.ToBTC(),
 			Confirmations: uint64(confirmations),
-		},
+		})
 	}
 	return ret, nil
 }
@@ -2117,27 +2182,30 @@ func ListReceivedByAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) 
 		confirmations int32
 		// Hashes of transactions which include an output paying to the address
 		tx []string
+		// Account which the address belongs to
+		account string
 	}
 
-	bs, err := w.SyncedChainTip()
-	if err != nil {
-		return nil, err
-	}
+	blk := w.Manager.SyncedTo()
 
 	// Intermediate data for all addresses.
 	allAddrData := make(map[string]AddrData)
 	if cmd.IncludeEmpty {
 		// Create an AddrData entry for each active address in the account.
 		// Otherwise we'll just get addresses from transactions later.
-		for _, address := range w.SortedActivePaymentAddresses() {
+		sortedAddrs, err := w.SortedActivePaymentAddresses()
+		if err != nil {
+			return nil, err
+		}
+		for _, address := range sortedAddrs {
 			// There might be duplicates, just overwrite them.
 			allAddrData[address] = AddrData{}
 		}
 	}
 	for _, record := range w.TxStore.Records() {
 		for _, credit := range record.Credits() {
-			confirmations := credit.Confirmations(bs.Height)
-			if !credit.Confirmed(cmd.MinConf, bs.Height) {
+			confirmations := credit.Confirmations(blk.Height)
+			if !credit.Confirmed(cmd.MinConf, blk.Height) {
 				// Not enough confirmations, skip the current block.
 				continue
 			}
@@ -2171,9 +2239,9 @@ func ListReceivedByAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) 
 	idx := 0
 	for address, addrData := range allAddrData {
 		ret[idx] = btcjson.ListReceivedByAddressResult{
-			Account:       "",
+			Account:       waddrmgr.DefaultAccountName,
 			Address:       address,
-			Amount:        addrData.amount.ToUnit(btcutil.AmountBTC),
+			Amount:        addrData.amount.ToBTC(),
 			Confirmations: uint64(addrData.confirmations),
 			TxIDs:         addrData.tx,
 		}
@@ -2200,20 +2268,14 @@ func ListSinceBlock(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interf
 		height = int32(block.Height())
 	}
 
-	bs, err := w.SyncedChainTip()
-	if err != nil {
-		return nil, err
-	}
+	blk := w.Manager.SyncedTo()
 
 	// For the result we need the block hash for the last block counted
 	// in the blockchain due to confirmations. We send this off now so that
 	// it can arrive asynchronously while we figure out the rest.
-	gbh := chainSvr.GetBlockHashAsync(int64(bs.Height) + 1 - int64(cmd.TargetConfirmations))
-	if err != nil {
-		return nil, err
-	}
+	gbh := chainSvr.GetBlockHashAsync(int64(blk.Height) + 1 - int64(cmd.TargetConfirmations))
 
-	txInfoList, err := w.ListSinceBlock(height, bs.Height,
+	txInfoList, err := w.ListSinceBlock(height, blk.Height,
 		cmd.TargetConfirmations)
 	if err != nil {
 		return nil, err
@@ -2237,14 +2299,11 @@ func ListSinceBlock(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interf
 func ListTransactions(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcjson.ListTransactionsCmd)
 
-	var account string
 	if cmd.Account != nil {
-		account = *cmd.Account
-	}
-
-	err := checkAccountName(account)
-	if err != nil {
-		return nil, err
+		err := checkAccountName(*cmd.Account)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return w.ListTransactions(cmd.From, cmd.Count)
@@ -2287,14 +2346,11 @@ func ListAddressTransactions(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd
 func ListAllTransactions(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcws.ListAllTransactionsCmd)
 
-	var account string
 	if cmd.Account != nil {
-		account = *cmd.Account
-	}
-
-	err := checkAccountName(account)
-	if err != nil {
-		return nil, err
+		err := checkAccountName(*cmd.Account)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return w.ListAllTransactions()
@@ -2351,20 +2407,20 @@ func LockUnspent(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface
 // sendPairs is a helper routine to reduce duplicated code when creating and
 // sending payment transactions.
 func sendPairs(w *Wallet, chainSvr *chain.Client, cmd btcjson.Cmd,
-	amounts map[string]btcutil.Amount, minconf int) (interface{}, error) {
+	amounts map[string]btcutil.Amount, account uint32, minconf int) (interface{}, error) {
 
 	// Create transaction, replying with an error if the creation
 	// was not successful.
-	createdTx, err := w.CreateSimpleTx(amounts, minconf)
+	createdTx, err := w.CreateSimpleTx(account, amounts, minconf)
 	if err != nil {
-		switch err {
-		case ErrNonPositiveAmount:
+		switch {
+		case err == ErrNonPositiveAmount:
 			return nil, ErrNeedPositiveAmount
-		case keystore.ErrLocked:
+		case isManagerLockedError(err):
 			return nil, btcjson.ErrWalletUnlockNeeded
-		default:
-			return nil, err
 		}
+
+		return nil, err
 	}
 
 	// Add to transaction store.
@@ -2404,7 +2460,7 @@ func sendPairs(w *Wallet, chainSvr *chain.Client, cmd btcjson.Cmd,
 func SendFrom(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcjson.SendFromCmd)
 
-	err := checkAccountName(cmd.FromAccount)
+	account, err := w.Manager.LookupAccount(cmd.FromAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -2421,7 +2477,7 @@ func SendFrom(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{},
 		cmd.ToAddress: btcutil.Amount(cmd.Amount),
 	}
 
-	return sendPairs(w, chainSvr, cmd, pairs, cmd.MinConf)
+	return sendPairs(w, chainSvr, cmd, pairs, account, cmd.MinConf)
 }
 
 // SendMany handles a sendmany RPC request by creating a new transaction
@@ -2432,7 +2488,7 @@ func SendFrom(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{},
 func SendMany(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(*btcjson.SendManyCmd)
 
-	err := checkAccountName(cmd.FromAccount)
+	account, err := w.Manager.LookupAccount(cmd.FromAccount)
 	if err != nil {
 		return nil, err
 	}
@@ -2448,7 +2504,7 @@ func SendMany(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{},
 		pairs[k] = btcutil.Amount(v)
 	}
 
-	return sendPairs(w, chainSvr, cmd, pairs, cmd.MinConf)
+	return sendPairs(w, chainSvr, cmd, pairs, account, cmd.MinConf)
 }
 
 // SendToAddress handles a sendtoaddress RPC request by creating a new
@@ -2469,7 +2525,8 @@ func SendToAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interfa
 		cmd.Address: btcutil.Amount(cmd.Amount),
 	}
 
-	return sendPairs(w, chainSvr, cmd, pairs, 1)
+	// sendtoaddress always spends from the default account, this matches bitcoind
+	return sendPairs(w, chainSvr, cmd, pairs, waddrmgr.DefaultAccountNum, 1)
 }
 
 // SetTxFee sets the transaction fee per kilobyte added to transactions.
@@ -2497,17 +2554,16 @@ func SignMessage(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface
 		return nil, ParseError{err}
 	}
 
-	ainfo, err := w.KeyStore.Address(addr)
+	ainfo, err := w.Manager.Address(addr)
 	if err != nil {
 		return nil, btcjson.ErrInvalidAddressOrKey
 	}
 
-	pka := ainfo.(keystore.PubKeyAddress)
-	tmp, err := pka.PrivKey()
+	pka := ainfo.(waddrmgr.ManagedPubKeyAddress)
+	privKey, err := pka.PrivKey()
 	if err != nil {
 		return nil, err
 	}
-	privKey := (*btcec.PrivateKey)(tmp)
 
 	fullmsg := "Bitcoin Signed Message:\n" + cmd.Message
 	sigbytes, err := btcec.SignCompact(btcec.S256(), privKey,
@@ -2517,71 +2573,6 @@ func SignMessage(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface
 	}
 
 	return base64.StdEncoding.EncodeToString(sigbytes), nil
-}
-
-func (s *rpcServer) handleCreateEncryptedWallet(request []byte) (interface{}, error) {
-	s.handlerLock.Lock()
-	defer s.handlerLock.Unlock()
-
-	switch {
-	case s.wallet == nil && !s.createOK:
-		// Wallet hasn't finished loading, SetWallet (either with an
-		// actual or nil wallet) hasn't been called yet.
-		return nil, ErrUnloadedWallet
-
-	case s.wallet != nil:
-		return nil, errors.New("wallet already opened")
-
-	case s.chainSvr == nil:
-		return nil, ErrNeedsChainSvr
-	}
-
-	// Parse request to access the passphrase.
-	cmd, err := btcjson.ParseMarshaledCmd(request)
-	if err != nil {
-		return nil, err
-	}
-	req, ok := cmd.(*btcws.CreateEncryptedWalletCmd)
-	if !ok || len(req.Passphrase) == 0 {
-		// Request is already valid JSON-RPC and the method was good,
-		// so must be bad parameters.
-		return nil, btcjson.ErrInvalidParams
-	}
-
-	wallet, err := newEncryptedWallet([]byte(req.Passphrase), s.chainSvr)
-	if err != nil {
-		return nil, err
-	}
-
-	s.wallet = wallet
-	s.registerWalletNtfns <- struct{}{}
-	s.handlerLock = noopLocker{}
-	s.handlerLookup = lookupAnyHandler
-
-	wallet.Start(s.chainSvr)
-
-	// When the wallet eventually shuts down (i.e. from the stop RPC), close
-	// the rest of the server.
-	go func() {
-		wallet.WaitForShutdown()
-		s.Stop()
-	}()
-
-	// A nil reply is sent upon successful wallet creation.
-	return nil, nil
-}
-
-// RecoverAddresses recovers the next n addresses from an account's wallet.
-func RecoverAddresses(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
-	cmd := icmd.(*btcws.RecoverAddressesCmd)
-
-	err := checkDefaultAccount(cmd.Account)
-	if err != nil {
-		return nil, err
-	}
-
-	err = w.RecoverAddresses(cmd.N)
-	return nil, err
 }
 
 // pendingTx is used for async fetching of transaction dependancies in
@@ -2779,12 +2770,12 @@ func SignRawTransaction(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (in
 				}
 				return wif.PrivKey, wif.CompressPubKey, nil
 			}
-			address, err := w.KeyStore.Address(addr)
+			address, err := w.Manager.Address(addr)
 			if err != nil {
 				return nil, false, err
 			}
 
-			pka, ok := address.(keystore.PubKeyAddress)
+			pka, ok := address.(waddrmgr.ManagedPubKeyAddress)
 			if !ok {
 				return nil, false, errors.New("address is not " +
 					"a pubkey address")
@@ -2810,20 +2801,17 @@ func SignRawTransaction(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (in
 				}
 				return script, nil
 			}
-			address, err := w.KeyStore.Address(addr)
+			address, err := w.Manager.Address(addr)
 			if err != nil {
 				return nil, err
 			}
-			sa, ok := address.(keystore.ScriptAddress)
+			sa, ok := address.(waddrmgr.ManagedScriptAddress)
 			if !ok {
 				return nil, errors.New("address is not a script" +
 					" address")
 			}
 
-			// TODO(oga) we could possible speed things up further
-			// by returning the addresses, class and nrequired here
-			// thus avoiding recomputing them.
-			return sa.Script(), nil
+			return sa.Script()
 		})
 
 		// SigHashSingle inputs can only be signed if there's a
@@ -2846,10 +2834,8 @@ func SignRawTransaction(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (in
 
 		// Either it was already signed or we just signed it.
 		// Find out if it is completely satisfied or still needs more.
-		flags := txscript.ScriptBip16 | txscript.ScriptCanonicalSignatures |
-			txscript.ScriptStrictMultiSig
 		engine, err := txscript.NewScript(txIn.SignatureScript, input,
-			i, msgTx, flags)
+			i, msgTx, txscript.StandardVerifyFlags)
 		if err != nil || engine.Execute() != nil {
 			complete = false
 		}
@@ -2888,31 +2874,62 @@ func ValidateAddress(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd) (inter
 	result.Address = addr.EncodeAddress()
 	result.IsValid = true
 
-	ainfo, err := w.KeyStore.Address(addr)
-	if err == nil {
-		result.IsMine = true
-		result.Account = ""
+	ainfo, err := w.Manager.Address(addr)
+	if err != nil {
+		if isManagerAddressNotFoundError(err) {
+			// No additional information available about the address.
+			return result, nil
+		}
+		return nil, err
+	}
 
-		if pka, ok := ainfo.(keystore.PubKeyAddress); ok {
-			result.IsCompressed = pka.Compressed()
-			result.PubKey = pka.ExportPubKey()
+	// The address lookup was successful which means there is further
+	// information about it available and it is "mine".
+	result.IsMine = true
+	acctName, err := w.Manager.AccountName(ainfo.Account())
+	if err != nil {
+		return nil, ErrAccountNameNotFound
+	}
+	result.Account = acctName
 
-		} else if sa, ok := ainfo.(keystore.ScriptAddress); ok {
-			result.IsScript = true
-			addresses := sa.Addresses()
-			addrStrings := make([]string, len(addresses))
-			for i, a := range addresses {
-				addrStrings[i] = a.EncodeAddress()
-			}
-			result.Addresses = addrStrings
-			result.Hex = hex.EncodeToString(sa.Script())
+	switch ma := ainfo.(type) {
+	case waddrmgr.ManagedPubKeyAddress:
+		result.IsCompressed = ma.Compressed()
+		result.PubKey = ma.ExportPubKey()
 
-			class := sa.ScriptClass()
-			// script type
-			result.Script = class.String()
-			if class == txscript.MultiSigTy {
-				result.SigsRequired = int32(sa.RequiredSigs())
-			}
+	case waddrmgr.ManagedScriptAddress:
+		result.IsScript = true
+
+		// The script is only available if the manager is unlocked, so
+		// just break out now if there is an error.
+		script, err := ma.Script()
+		if err != nil {
+			break
+		}
+		result.Hex = hex.EncodeToString(script)
+
+		// This typically shouldn't fail unless an invalid script was
+		// imported.  However, if it fails for any reason, there is no
+		// further information available, so just set the script type
+		// a non-standard and break out now.
+		class, addrs, reqSigs, err := txscript.ExtractPkScriptAddrs(
+			script, activeNet.Params)
+		if err != nil {
+			result.Script = txscript.NonStandardTy.String()
+			break
+		}
+
+		addrStrings := make([]string, len(addrs))
+		for i, a := range addrs {
+			addrStrings[i] = a.EncodeAddress()
+		}
+		result.Addresses = addrStrings
+
+		// Multi-signature scripts also provide the number of required
+		// signatures.
+		result.Script = class.String()
+		if class == txscript.MultiSigTy {
+			result.SigsRequired = int32(reqSigs)
 		}
 	}
 
@@ -2999,7 +3016,7 @@ func WalletPassphraseChange(w *Wallet, chainSvr *chain.Client, icmd btcjson.Cmd)
 
 	err := w.ChangePassphrase([]byte(cmd.OldPassphrase),
 		[]byte(cmd.NewPassphrase))
-	if err == keystore.ErrWrongPassphrase {
+	if isManagerWrongPassphraseError(err) {
 		return nil, btcjson.ErrWalletPassphraseIncorrect
 	}
 	return nil, err
