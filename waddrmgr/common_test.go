@@ -24,9 +24,9 @@ import (
 	"testing"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcwallet/waddrmgr"
-	"github.com/btcsuite/btcwallet/walletdb"
-	_ "github.com/btcsuite/btcwallet/walletdb/bdb"
+	"github.com/soapboxsys/ombwallet/waddrmgr"
+	"github.com/soapboxsys/ombwallet/walletdb"
+	_ "github.com/soapboxsys/ombwallet/walletdb/bdb"
 )
 
 var (

@@ -26,8 +26,8 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcrpcclient"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/txstore"
-	"github.com/btcsuite/btcwallet/waddrmgr"
+	"github.com/soapboxsys/ombwallet/txstore"
+	"github.com/soapboxsys/ombwallet/waddrmgr"
 )
 
 // Client represents a persistent client connection to a bitcoin RPC server

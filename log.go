@@ -21,8 +21,8 @@ import (
 	"os"
 
 	"github.com/btcsuite/btclog"
-	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/txstore"
+	"github.com/soapboxsys/ombwallet/chain"
+	"github.com/soapboxsys/ombwallet/txstore"
 	"github.com/btcsuite/seelog"
 )
 

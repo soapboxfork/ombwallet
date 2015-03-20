@@ -27,9 +27,9 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	"github.com/btcsuite/btcwallet/internal/zero"
-	"github.com/btcsuite/btcwallet/snacl"
-	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/soapboxsys/ombwallet/internal/zero"
+	"github.com/soapboxsys/ombwallet/snacl"
+	"github.com/soapboxsys/ombwallet/walletdb"
 )
 
 const (

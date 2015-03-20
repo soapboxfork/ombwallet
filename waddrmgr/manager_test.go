@@ -26,8 +26,8 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/waddrmgr"
-	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/soapboxsys/ombwallet/waddrmgr"
+	"github.com/soapboxsys/ombwallet/walletdb"
 )
 
 // newShaHash converts the passed big-endian hex string into a wire.ShaHash.

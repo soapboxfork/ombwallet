@@ -34,10 +34,10 @@ import (
 	"github.com/btcsuite/btcd/chaincfg"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/txstore"
-	"github.com/btcsuite/btcwallet/waddrmgr"
-	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/soapboxsys/ombwallet/chain"
+	"github.com/soapboxsys/ombwallet/txstore"
+	"github.com/soapboxsys/ombwallet/waddrmgr"
+	"github.com/soapboxsys/ombwallet/walletdb"
 )
 
 // ErrNotSynced describes an error where an operation cannot complete

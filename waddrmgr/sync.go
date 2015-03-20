@@ -20,7 +20,7 @@ import (
 	"sync"
 
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/soapboxsys/ombwallet/walletdb"
 )
 
 const (

@@ -19,9 +19,9 @@ package main
 import (
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/txstore"
-	"github.com/btcsuite/btcwallet/waddrmgr"
+	"github.com/soapboxsys/ombwallet/chain"
+	"github.com/soapboxsys/ombwallet/txstore"
+	"github.com/soapboxsys/ombwallet/waddrmgr"
 )
 
 func (w *Wallet) handleChainNotifications() {

@@ -44,9 +44,9 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcrpcclient"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/txstore"
-	"github.com/btcsuite/btcwallet/waddrmgr"
+	"github.com/soapboxsys/ombwallet/chain"
+	"github.com/soapboxsys/ombwallet/txstore"
+	"github.com/soapboxsys/ombwallet/waddrmgr"
 	"github.com/btcsuite/websocket"
 	// NOTICE the crucial import
 	_ "github.com/soapboxsys/ombudslib/rpcexten"

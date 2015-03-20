@@ -23,9 +23,9 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	"github.com/btcsuite/btcwallet/internal/zero"
-	"github.com/btcsuite/btcwallet/waddrmgr"
-	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/soapboxsys/ombwallet/internal/zero"
+	"github.com/soapboxsys/ombwallet/waddrmgr"
+	"github.com/soapboxsys/ombwallet/walletdb"
 )
 
 const (

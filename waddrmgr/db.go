@@ -23,7 +23,7 @@ import (
 	"time"
 
 	"github.com/btcsuite/btcd/wire"
-	"github.com/btcsuite/btcwallet/walletdb"
+	"github.com/soapboxsys/ombwallet/walletdb"
 	"github.com/btcsuite/fastsha256"
 )
 

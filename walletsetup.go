@@ -28,10 +28,10 @@ import (
 	"github.com/btcsuite/btcd/btcec"
 	"github.com/btcsuite/btcutil"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	"github.com/btcsuite/btcwallet/legacy/keystore"
-	"github.com/btcsuite/btcwallet/waddrmgr"
-	"github.com/btcsuite/btcwallet/walletdb"
-	_ "github.com/btcsuite/btcwallet/walletdb/bdb"
+	"github.com/soapboxsys/ombwallet/legacy/keystore"
+	"github.com/soapboxsys/ombwallet/waddrmgr"
+	"github.com/soapboxsys/ombwallet/walletdb"
+	_ "github.com/soapboxsys/ombwallet/walletdb/bdb"
 	"github.com/btcsuite/golangcrypto/ssh/terminal"
 )
 

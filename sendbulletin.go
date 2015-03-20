@@ -8,8 +8,8 @@ import (
 	"github.com/btcsuite/btcd/txscript"
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-	"github.com/btcsuite/btcwallet/chain"
-	"github.com/btcsuite/btcwallet/txstore"
+	"github.com/soapboxsys/ombwallet/chain"
+	"github.com/soapboxsys/ombwallet/txstore"
 	"github.com/soapboxsys/ombudslib/protocol/ombproto"
 	"github.com/soapboxsys/ombudslib/rpcexten"
 )

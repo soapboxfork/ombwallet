@@ -23,10 +23,10 @@ import (
 	"path/filepath"
 
 	"github.com/btcsuite/btcd/chaincfg"
-	"github.com/btcsuite/btcwallet/votingpool"
-	"github.com/btcsuite/btcwallet/waddrmgr"
-	"github.com/btcsuite/btcwallet/walletdb"
-	_ "github.com/btcsuite/btcwallet/walletdb/bdb"
+	"github.com/soapboxsys/ombwallet/votingpool"
+	"github.com/soapboxsys/ombwallet/waddrmgr"
+	"github.com/soapboxsys/ombwallet/walletdb"
+	_ "github.com/soapboxsys/ombwallet/walletdb/bdb"
 )
 
 func Example_basic() {
