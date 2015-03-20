@@ -26,13 +26,13 @@ import (
 
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
-	"github.com/soapboxsys/ombwallet/legacy/keystore"
 	flags "github.com/btcsuite/go-flags"
+	"github.com/soapboxsys/ombwallet/legacy/keystore"
 )
 
 const (
 	defaultCAFilename        = "btcd.cert"
-	defaultConfigFilename    = "btcwallet.conf"
+	defaultConfigFilename    = "ombwallet.conf"
 	defaultBtcNet            = wire.TestNet3
 	defaultLogLevel          = "info"
 	defaultLogDirname        = "logs"
@@ -46,7 +46,7 @@ const (
 
 var (
 	btcdHomeDir        = btcutil.AppDataDir("btcd", false)
-	btcwalletHomeDir   = btcutil.AppDataDir("btcwallet", false)
+	btcwalletHomeDir   = btcutil.AppDataDir("ombwallet", false)
 	btcdHomedirCAFile  = filepath.Join(btcdHomeDir, "rpc.cert")
 	defaultConfigFile  = filepath.Join(btcwalletHomeDir, defaultConfigFilename)
 	defaultDataDir     = btcwalletHomeDir
