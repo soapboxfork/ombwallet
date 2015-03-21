@@ -48,11 +48,11 @@ var (
 	ombudsCoreHome     = btcutil.AppDataDir("ombudscore", false)
 	btcdHomeDir        = filepath.Join(ombudsCoreHome, "node")
 	btcwalletHomeDir   = filepath.Join(ombudsCoreHome, "wallet")
-	btcdHomedirCAFile  = filepath.Join(btcdHomeDir, "rpc.cert")
+	btcdHomedirCAFile  = filepath.Join(ombudsCoreHome, "rpc.cert")
 	defaultConfigFile  = filepath.Join(btcwalletHomeDir, defaultConfigFilename)
 	defaultDataDir     = btcwalletHomeDir
-	defaultRPCKeyFile  = filepath.Join(btcwalletHomeDir, "rpc.key")
-	defaultRPCCertFile = filepath.Join(btcwalletHomeDir, "rpc.cert")
+	defaultRPCKeyFile  = filepath.Join(ombudsCoreHome, "rpc.key")
+	defaultRPCCertFile = filepath.Join(ombudsCoreHome, "rpc.cert")
 	defaultLogDir      = filepath.Join(btcwalletHomeDir, defaultLogDirname)
 )
 
