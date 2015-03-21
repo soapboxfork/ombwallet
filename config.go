@@ -31,8 +31,8 @@ import (
 )
 
 const (
-	defaultCAFilename        = "btcd.cert"
-	defaultConfigFilename    = "ombwallet.conf"
+	defaultCAFilename        = "rpc.cert"
+	defaultConfigFilename    = "wallet.conf"
 	defaultBtcNet            = wire.TestNet3
 	defaultLogLevel          = "info"
 	defaultLogDirname        = "logs"
@@ -45,8 +45,9 @@ const (
 )
 
 var (
-	btcdHomeDir        = btcutil.AppDataDir("btcd", false)
-	btcwalletHomeDir   = btcutil.AppDataDir("ombwallet", false)
+	ombudsCoreHome     = btcutil.AppDataDir("ombudscore", false)
+	btcdHomeDir        = filepath.Join(ombudsCoreHome, "node")
+	btcwalletHomeDir   = filepath.Join(ombudsCoreHome, "wallet")
 	btcdHomedirCAFile  = filepath.Join(btcdHomeDir, "rpc.cert")
 	defaultConfigFile  = filepath.Join(btcwalletHomeDir, defaultConfigFilename)
 	defaultDataDir     = btcwalletHomeDir

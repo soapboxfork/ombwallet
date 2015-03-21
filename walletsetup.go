@@ -401,7 +401,6 @@ func createWallet(cfg *config) error {
 	if err != nil {
 		return err
 	}
-	fmt.Println("cant' the wallet...")
 
 	// Create the address manager.
 	namespace, err := db.Namespace(waddrmgrNamespaceKey)
