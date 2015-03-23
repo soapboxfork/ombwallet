@@ -2,7 +2,7 @@ ombwallet
 =========
 
 A fork of btcsuite's [btcwallet](https://github.com/btcsuite/btcwallet). 
-This project is based off of the 0.4.0 release of btcwallet.
+This project is based off of the 0.5.1 Alpha release of btcwallet.
 It has intentionally been held back to maintain my sanity as we work on other code bases.
 
 ## Installation
