@@ -21,21 +21,23 @@ import (
 func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	cmd := icmd.(rpcexten.SendBulletinCmd)
 
+	log.Trace("Starting Send")
 	// NOTE Rapid requests will serially block due to locking
 	heldUnlock, err := w.HoldUnlock()
 	if err != nil {
 		return nil, err
 	}
 	defer heldUnlock.Release()
+	log.Trace("Grabbed wallet lock")
 
 	addr, err := btcutil.DecodeAddress(cmd.Address, activeNet.Params)
 	if err != nil {
 		return nil, err
 	}
 	// NOTE checks to see if addr is in the wallet
-	//var waddr keystore.WalletAddress
 	_, err = w.Manager.Address(addr)
 	if err != nil {
+		log.Trace("This was the error")
 		return nil, err
 	}
 
@@ -44,6 +46,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 		return nil, err
 	}
 
+	log.Trace("Looking into elgible outputs")
 	// NOTE minconf is set to 1
 	var eligible []txstore.Credit
 	eligible, err = w.findEligibleOutputs(1, bs)
@@ -69,6 +72,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 		totalBurn += btcutil.Amount(txout.Value)
 	}
 
+	log.Trace("Searching for a UTXO with target address.")
 	// Find the index of the credit with the target address and use that as the
 	// first txin in the bulletin.
 	i, err := findAddrCredit(eligible, addr)
@@ -97,6 +101,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 		totalAdded += input.Amount()
 	}
 
+	log.Trace("Estimating fee")
 	// Initial fee estimate
 	szEst := estimateTxSize(len(inputs), len(msgtx.TxOut))
 	feeEst := minimumFee(w.FeeIncrement, szEst, msgtx.TxOut, inputs, bs.Height)
@@ -119,6 +124,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 	// changeIdx is -1 unless there's a change output.
 	changeIdx := -1
 
+	log.Trace("Formulating the transaction and computing fees")
 	for {
 		change := totalAdded - totalBurn - feeEst
 		if change > 0 {
@@ -135,6 +141,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 			}
 		}
 
+		log.Trace("Signing the transaction")
 		if err = signMsgTx(msgtx, inputs, w.Manager); err != nil {
 			return nil, err
 		}
@@ -171,6 +178,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 		return nil, err
 	}
 
+	log.Trace("Inserting new tx into the TxStore.")
 	// Handle updating the TxStore
 	if err = insertIntoStore(w.TxStore, msgtx); err != nil {
 		return nil, err
