@@ -12,13 +12,20 @@ It has intentionally been held back to maintain my sanity as we work on other co
 - Install Go according to the installation instructions here:
   http://golang.org/doc/install
 
-- Run the following commands to obtain and install btcwallet and all
-  dependencies:
+- Verify that you have the [godep tool](https://github.com/tools/godep). 
+
+- Install ombfullnode by folllowing the instructions [here](https://github.com/soapboxsys/ombfullnode/blob/master/README.md#installation).
+
+- Run the following commands:
 ```bash
-$ go get -u -v github.com/soapboxsys/ombfullnode/...
-$ go get -u -v github.com/soapboxsys/ombwallet/...
+# Just download the required packages.
+> go get -d github.com/soapboxsys/ombwallet/...
+# Move into the workspace's path
+> cd $GOPATH/src/github.com/soapboxsys/ombwallet
+# Use godep to checkout the correct dependent library commits
+> godep restore
+# Move into your $GOPATH binary directory and build the binary
+> cd $GOPATH/bin/
+> go build github.com/soapboxsys/ombwallet/...
 ```
 
-- ombfullnode and ombwallet will now be installed in either ```$GOROOT/bin``` or
-  ```$GOPATH/bin``` depending on your configuration.  If you did not already
-  add to your system path during the installation, we recommend you do so now.
