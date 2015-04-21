@@ -1,0 +1,126 @@
+{
+	"ImportPath": "github.com/soapboxsys/ombwallet",
+	"GoVersion": "go1.4",
+	"Deps": [
+		{
+			"ImportPath": "code.google.com/p/goprotobuf/proto",
+			"Comment": "go.r60-163",
+			"Rev": "9352842ae63ee1d7e74e074ce7bb10370c4b6b9e"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/bolt",
+			"Comment": "data/v1-295-gb77a64d",
+			"Rev": "b77a64d77e0674185eacd2354e94a9dfb151b940"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/btcd/blockchain",
+			"Comment": "BTCD_0_10_0_BETA",
+			"Rev": "cfefe14153eeb37b4719cecf91c764ca66eaffee"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/btcd/btcec",
+			"Comment": "BTCD_0_10_0_BETA",
+			"Rev": "cfefe14153eeb37b4719cecf91c764ca66eaffee"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/btcd/btcjson",
+			"Comment": "BTCD_0_10_0_BETA",
+			"Rev": "cfefe14153eeb37b4719cecf91c764ca66eaffee"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/btcd/chaincfg",
+			"Comment": "BTCD_0_10_0_BETA",
+			"Rev": "cfefe14153eeb37b4719cecf91c764ca66eaffee"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/btcd/database",
+			"Comment": "BTCD_0_10_0_BETA",
+			"Rev": "cfefe14153eeb37b4719cecf91c764ca66eaffee"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/btcd/txscript",
+			"Comment": "BTCD_0_10_0_BETA",
+			"Rev": "cfefe14153eeb37b4719cecf91c764ca66eaffee"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/btcd/wire",
+			"Comment": "BTCD_0_10_0_BETA",
+			"Rev": "cfefe14153eeb37b4719cecf91c764ca66eaffee"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/btclog",
+			"Comment": "BTCLOG_0_0_3-4-gbaa3c5a",
+			"Rev": "baa3c5ace9907202e5659ee1416ee902facde213"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/btcrpcclient",
+			"Rev": "d45f4c47a212ecdcb5b9b6b40d3be3d5f5caccf4"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/btcutil",
+			"Comment": "BTCUTIL_0_4_0-32-gff58d65",
+			"Rev": "ff58d6571d21c0a8478befc038afd07b56bc0549"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/fastsha256",
+			"Rev": "302ad4db268b46f9ebda3078f6f7397f96047735"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/go-flags",
+			"Rev": "6c288d648c1cc1befcb90cb5511dcacf64ae8e61"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/go-socks/socks",
+			"Rev": "a7a73aaa00584d5aee1efdb0891e19b7228d8d69"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/golangcrypto/nacl/secretbox",
+			"Rev": "53f62d9b43e87a6c56975cf862af7edf33a8d0df"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/golangcrypto/pbkdf2",
+			"Rev": "53f62d9b43e87a6c56975cf862af7edf33a8d0df"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/golangcrypto/poly1305",
+			"Rev": "53f62d9b43e87a6c56975cf862af7edf33a8d0df"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/golangcrypto/ripemd160",
+			"Rev": "53f62d9b43e87a6c56975cf862af7edf33a8d0df"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/golangcrypto/salsa20/salsa",
+			"Rev": "53f62d9b43e87a6c56975cf862af7edf33a8d0df"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/golangcrypto/scrypt",
+			"Rev": "53f62d9b43e87a6c56975cf862af7edf33a8d0df"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/golangcrypto/ssh/terminal",
+			"Rev": "53f62d9b43e87a6c56975cf862af7edf33a8d0df"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/seelog",
+			"Comment": "v2.1-84-g313961b",
+			"Rev": "313961b101eb55f65ae0f03ddd4e322731763b6c"
+		},
+		{
+			"ImportPath": "github.com/btcsuite/websocket",
+			"Rev": "31079b6807923eb23992c421b114992b95131b55"
+		},
+		{
+			"ImportPath": "github.com/soapboxsys/ombudslib/protocol/ombproto",
+			"Rev": "1d70657c49f8da6891180c9e65ff86c41a1cd9ac"
+		},
+		{
+			"ImportPath": "github.com/soapboxsys/ombudslib/rpcexten",
+			"Rev": "1d70657c49f8da6891180c9e65ff86c41a1cd9ac"
+		},
+		{
+			"ImportPath": "golang.org/x/crypto/ripemd160",
+			"Rev": "8b27f58b78dbd60e9a26b60b0d908ea642974b6d"
+		}
+	]
+}
