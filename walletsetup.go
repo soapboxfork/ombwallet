@@ -349,6 +349,19 @@ func convertLegacyKeystore(legacyKeyStore *keystore.Store, manager *waddrmgr.Man
 	return nil
 }
 
+func printWalletStartSetup() {
+
+	fmt.Printf("===================== CREATE A NEW WALLET =====================\n")
+}
+
+func printWalletFinishSetup() {
+	fmt.Printf("================= WALLET CREATED SUCCESSFULLY =================\n")
+}
+
+func printWalletErrorSetup(err error) {
+	fmt.Printf("================= FAILED! WITH ERROR %s", err)
+}
+
 // createWallet prompts the user for information needed to generate a new wallet
 // and generates the wallet accordingly.  The new wallet will reside at the
 // provided path.
@@ -366,6 +379,8 @@ func createWallet(cfg *config) error {
 			return err
 		}
 	}
+
+	printWalletStartSetup()
 
 	// Start by prompting for the private passphrase.  When there is an
 	// existing keystore, the user will be promped for that passphrase,
@@ -436,51 +451,6 @@ func createWallet(cfg *config) error {
 
 	manager.Close()
 	fmt.Println("The wallet has been created successfully.")
-	return nil
-}
-
-// createSimulationWallet is intended to be called from the rpcclient
-// and used to create a wallet for actors involved in simulations.
-func createSimulationWallet(cfg *config) error {
-	// Simulation wallet password is 'password'.
-	privPass := []byte("password")
-
-	// Public passphrase is the default.
-	pubPass := []byte(defaultPubPassphrase)
-
-	// Generate a random seed.
-	seed, err := hdkeychain.GenerateSeed(hdkeychain.RecommendedSeedLen)
-	if err != nil {
-		return err
-	}
-
-	netDir := networkDir(cfg.DataDir, activeNet.Params)
-
-	// Create the wallet.
-	dbPath := filepath.Join(netDir, walletDbName)
-	fmt.Println("Creating the wallet...")
-
-	// Create the wallet database backed by bolt db.
-	db, err := walletdb.Create("bdb", dbPath)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	// Create the address manager.
-	waddrmgrNamespace, err := db.Namespace(waddrmgrNamespaceKey)
-	if err != nil {
-		return err
-	}
-
-	manager, err := waddrmgr.Create(waddrmgrNamespace, seed, []byte(pubPass),
-		[]byte(privPass), activeNet.Params, nil)
-	if err != nil {
-		return err
-	}
-
-	manager.Close()
-
-	fmt.Println("The wallet has been created successfully.")
+	printWalletFinishSetup()
 	return nil
 }
