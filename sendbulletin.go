@@ -37,7 +37,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 	// NOTE checks to see if addr is in the wallet
 	_, err = w.Manager.Address(addr)
 	if err != nil {
-		log.Trace("This was the error")
+		log.Trace("The address is not in the manager")
 		return nil, err
 	}
 
@@ -77,6 +77,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 	// first txin in the bulletin.
 	i, err := findAddrCredit(eligible, addr)
 	if err != nil {
+		log.Trace("No eligible credits found for addr: %s", addr)
 		return nil, err
 	}
 
