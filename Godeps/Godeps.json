@@ -110,15 +110,7 @@
 			"ImportPath": "github.com/btcsuite/websocket",
 			"Rev": "31079b6807923eb23992c421b114992b95131b55"
 		},
-		{
-			"ImportPath": "github.com/soapboxsys/ombudslib/protocol/ombproto",
-			"Rev": "1d70657c49f8da6891180c9e65ff86c41a1cd9ac"
-		},
-		{
-			"ImportPath": "github.com/soapboxsys/ombudslib/rpcexten",
-			"Rev": "1d70657c49f8da6891180c9e65ff86c41a1cd9ac"
-		},
-		{
+        {
 			"ImportPath": "golang.org/x/crypto/ripemd160",
 			"Rev": "8b27f58b78dbd60e9a26b60b0d908ea642974b6d"
 		}
