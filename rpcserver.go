@@ -1360,8 +1360,9 @@ var rpcHandlers = map[string]requestHandler{
 	"move":          Unsupported,
 	"setaccount":    Unsupported,
 
-	// NOTICE extends the wallet functionality
-	"sendbulletin": SendBulletin,
+	// NOTE extends the wallet functionality
+	"sendbulletin":    SendBulletin,
+	"composebulletin": ComposeBulletin,
 
 	// Extensions to the reference client JSON-RPC API
 	"exportwatchingwallet": ExportWatchingWallet,

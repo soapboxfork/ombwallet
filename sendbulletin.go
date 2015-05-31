@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
+	"encoding/hex"
 	"errors"
+	"fmt"
 	"sort"
 
 	"github.com/btcsuite/btcd/btcjson"
@@ -14,14 +17,54 @@ import (
 	"github.com/soapboxsys/ombwallet/txstore"
 )
 
-// TODO NOTICE
 // Handles a sendbulletin json request. Attempts to send a bulletin from the
 // specified address. If the address does not have enough funds or there is some
-// other problem then request throws a resonable error.
+// other problem then the request throws a resonable error.
 func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
-	cmd := icmd.(rpcexten.SendBulletinCmd)
+	log.Trace("Starting SendBulletin")
+	msgtx, err := createBulletinTx(w, chainSrv, icmd)
 
-	log.Trace("Starting Send")
+	log.Trace("Inserting new tx into the TxStore.")
+	// Handle updating the TxStore
+	if err = insertIntoStore(w.TxStore, msgtx); err != nil {
+		return nil, err
+	}
+
+	txSha, err := chainSrv.SendRawTransaction(msgtx, false)
+	if err != nil {
+		return nil, err
+	}
+	log.Infof("Successfully sent bulletin %v", txSha)
+
+	return txSha.String(), nil
+}
+
+// ComposeBulletin creates a bulletin using the wallet's internal state and the
+// the fields specified in the btcjson.cmd struct. It validates the returned tx
+// and if successful, returns that wire.msgtx as a raw hex string.
+func ComposeBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	log.Trace("Composing a Bulletin")
+
+	msgtx, err := createBulletinTx(w, chainSrv, icmd)
+	if err != nil {
+		return nil, err
+	}
+
+	mhx, err := messageToHex(msgtx)
+	if err != nil {
+		return nil, err
+	}
+	return mhx, nil
+}
+
+// createBulletinTx uses the wallets internal structures to produce a bulletin
+// from the fields provided in the btcjson.cmd. Before the function returns it
+// validates the txin scripts against the internal state of the wallet. If the
+// scripts execute successfully, the function returns its 'valid' bulletin.
+func createBulletinTx(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (*wire.MsgTx, error) {
+	// NOTE because send and compose have the same fields this works.
+	cmd := icmd.(rpcexten.BulletinCmd)
+
 	// NOTE Rapid requests will serially block due to locking
 	heldUnlock, err := w.HoldUnlock()
 	if err != nil {
@@ -30,7 +73,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 	defer heldUnlock.Release()
 	log.Trace("Grabbed wallet lock")
 
-	addr, err := btcutil.DecodeAddress(cmd.Address, activeNet.Params)
+	addr, err := btcutil.DecodeAddress(cmd.GetAddress(), activeNet.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -57,11 +100,12 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 	msgtx := wire.NewMsgTx()
 
 	// Create the bulletin and add bulletin TxOuts to msgtx
-	bltn, err := ombproto.NewBulletinFromStr(cmd.Address, cmd.Board, cmd.Message)
+	addrStr, board, msg := cmd.GetAddress(), cmd.GetBoard(), cmd.GetMessage()
+	bltn, err := ombproto.NewBulletinFromStr(addrStr, board, msg)
 	if err != nil {
 		return nil, err
 	}
-	txouts, err := bltn.TxOuts(rpcexten.DustAmnt(), activeNet.Params)
+	txouts, err := bltn.TxOuts(ombproto.DustAmnt(), activeNet.Params)
 	if err != nil {
 		return nil, err
 	}
@@ -179,19 +223,7 @@ func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interfac
 		return nil, err
 	}
 
-	log.Trace("Inserting new tx into the TxStore.")
-	// Handle updating the TxStore
-	if err = insertIntoStore(w.TxStore, msgtx); err != nil {
-		return nil, err
-	}
-
-	txSha, err := chainSrv.SendRawTransaction(msgtx, false)
-	if err != nil {
-		return nil, err
-	}
-	log.Infof("Successfully sent bulletin %v", txSha)
-
-	return txSha.String(), nil
+	return msgtx, nil
 }
 
 // TODO NOTICE
@@ -242,4 +274,16 @@ func insertIntoStore(store *txstore.Store, tx *wire.MsgTx) error {
 	}
 	store.MarkDirty()
 	return nil
+}
+
+// messageToHex serializes a message to the wire protocol encoding using the
+// latest protocol version and returns a hex-encoded string of the result.
+func messageToHex(msg wire.Message) (string, error) {
+	var buf bytes.Buffer
+	if err := msg.BtcEncode(&buf, wire.ProtocolVersion); err != nil {
+		context := fmt.Sprintf("Failed to encode msg of type %T", msg)
+		return "", errors.New(context)
+	}
+
+	return hex.EncodeToString(buf.Bytes()), nil
 }
