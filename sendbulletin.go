@@ -23,6 +23,9 @@ import (
 func SendBulletin(w *Wallet, chainSrv *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
 	log.Trace("Starting SendBulletin")
 	msgtx, err := createBulletinTx(w, chainSrv, icmd)
+	if err != nil {
+		return nil, err
+	}
 
 	log.Trace("Inserting new tx into the TxStore.")
 	// Handle updating the TxStore
