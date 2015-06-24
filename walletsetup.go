@@ -362,10 +362,10 @@ func printWalletErrorSetup(err error) {
 	fmt.Printf("================= FAILED! WITH ERROR %s", err)
 }
 
-// createWallet prompts the user for information needed to generate a new wallet
+// createWalletWizard prompts the user for information needed to generate a new wallet
 // and generates the wallet accordingly.  The new wallet will reside at the
 // provided path.
-func createWallet(cfg *config) error {
+func createWalletWizard(cfg *config) error {
 	// When there is a legacy keystore, open it now to ensure any errors
 	// don't end up exiting the process after the user has spent time
 	// entering a bunch of information.
@@ -416,6 +416,7 @@ func createWallet(cfg *config) error {
 	if err != nil {
 		return err
 	}
+	defer db.Close()
 
 	// Create the address manager.
 	namespace, err := db.Namespace(waddrmgrNamespaceKey)

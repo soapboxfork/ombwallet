@@ -27,7 +27,6 @@ import (
 	"github.com/btcsuite/btcd/wire"
 	"github.com/btcsuite/btcutil"
 	flags "github.com/btcsuite/go-flags"
-	"github.com/soapboxsys/ombwallet/legacy/keystore"
 )
 
 const (
@@ -84,6 +83,7 @@ type config struct {
 	ProxyUser        string   `long:"proxyuser" description:"Username for proxy server"`
 	ProxyPass        string   `long:"proxypass" default-mask:"-" description:"Password for proxy server"`
 	Profile          string   `long:"profile" description:"Enable HTTP profiling on given port -- NOTE port must be between 1024 and 65536"`
+	Wizard           bool     `long:"wizard" short:"w" description:"Run the command line configuration wizard."`
 }
 
 // cleanAndExpandPath expands environement variables and leading ~ in the
@@ -364,26 +364,6 @@ func loadConfig() (*config, []string, error) {
 		fmt.Fprintln(os.Stderr, err)
 		parser.WriteHelp(os.Stderr)
 		return nil, nil, err
-	}
-
-	// Ensure the wallet exists and create it if it does not exist
-	netDir := networkDir(cfg.DataDir, activeNet.Params)
-	dbPath := filepath.Join(netDir, walletDbName)
-	keystorePath := filepath.Join(netDir, keystore.Filename)
-
-	if !fileExists(dbPath) && !fileExists(keystorePath) {
-
-		// Ensure the data directory for the network exists.
-		if err := checkCreateDir(netDir); err != nil {
-			fmt.Fprintln(os.Stderr, err)
-			return nil, nil, err
-		}
-
-		// Perform the initial wallet creation wizard.
-		if err := createWallet(&cfg); err != nil {
-			printWalletErrorSetup(err)
-			return nil, nil, err
-		}
 	}
 
 	if cfg.RPCConnect == "" {

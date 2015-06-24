@@ -57,6 +57,13 @@ func walletMain() error {
 	cfg = tcfg
 	defer backendLog.Flush()
 
+	// Blocks on wallet configuration. Either it is done via the command line or
+	// a temporary rpc server.
+	err = waitForSetup(cfg)
+	if err != nil {
+		return err
+	}
+
 	if cfg.Profile != "" {
 		go func() {
 			listenAddr := net.JoinHostPort("", cfg.Profile)

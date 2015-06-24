@@ -1307,6 +1307,7 @@ func (w *Wallet) TxRecord(txSha *wire.ShaHash) (r *txstore.TxRecord, ok bool) {
 
 // openWallet opens a wallet from disk.
 func openWallet() (*Wallet, error) {
+	log.Infof("Started to open the wallet")
 	netdir := networkDir(cfg.DataDir, activeNet.Params)
 	dbPath := filepath.Join(netdir, walletDbName)
 
@@ -1320,12 +1321,15 @@ func openWallet() (*Wallet, error) {
 	if err != nil {
 		return nil, err
 	}
+	log.Infof("Opened the bdb for the wallet")
 
 	// Get the namespace for the address manager.
 	namespace, err := db.Namespace(waddrmgrNamespaceKey)
 	if err != nil {
 		return nil, err
 	}
+
+	log.Infof("Created the addrmgr namespace")
 
 	// Open address manager and transaction store.
 	var txs *txstore.Store
