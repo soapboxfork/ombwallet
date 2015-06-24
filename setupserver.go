@@ -5,9 +5,10 @@ import (
 	"net"
 	"os"
 	"path/filepath"
-	"time"
 
+	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcwallet/legacy/keystore"
+	"github.com/soapboxsys/ombwallet/chain"
 )
 
 func waitForSetup(cfg *config) error {
@@ -33,7 +34,11 @@ func waitForSetup(cfg *config) error {
 			}
 		} else {
 			// Run the rpc wallet creation server
-			return startInitServer(cfg)
+			err := startInitServer(cfg)
+			if err != nil {
+				log.Infof("Init Server threw: %s", err)
+				return err
+			}
 		}
 	}
 	return nil
@@ -42,6 +47,52 @@ func waitForSetup(cfg *config) error {
 func startInitServer(cfg *config) error {
 	listenAddr := net.JoinHostPort("", cfg.Profile)
 	log.Infof("Initialization server listening on %s", listenAddr)
-	time.Sleep(5 * time.Second)
-	return fmt.Errorf("Timeout fired")
+
+	server, err := newRPCServer(cfg.SvrListeners, cfg.RPCMaxClients, 1)
+	if err != nil {
+		return err
+	}
+	server.limitedStart()
+	//time.Sleep(10 * time.Second)
+	//server.Stop()
+	<-server.quit
+
+	return nil
+}
+
+func (s *rpcServer) limitedStart() {
+	s.handlerLookup = limitedHandlerLookup
+	s.Start()
+}
+
+func limitedHandlerLookup(method string) (f requestHandler, ok bool) {
+	f, ok = limitedRpcHandlers[method]
+	return
+}
+
+var limitedRpcHandlers = map[string]requestHandler{
+	"getinfo":          Unsupported,
+	"walletsetup":      WalletSetupParams,
+	"walletstatecheck": uninitializedState,
+}
+
+// uninitializedState responds to walletstate check requests with a
+// response that indicates the wallet is in its initial un-created
+// state.
+func uninitializedState(*Wallet, *chain.Client, btcjson.Cmd) (interface{}, error) {
+	infoResult := &btcjson.InfoResult{
+		Proxy: version(),
+	}
+	return infoResult, nil
+}
+
+func WalletSetupParams(*Wallet, *chain.Client, btcjson.Cmd) (interface{}, error) {
+	infoResult := &btcjson.InfoResult{
+		Proxy:  version(),
+		Blocks: 9001,
+	}
+	// Configure the wallet
+
+	// If successful pull the stop channel lever.
+	return infoResult, nil
 }
