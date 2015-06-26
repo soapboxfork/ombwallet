@@ -407,9 +407,23 @@ func createWalletWizard(cfg *config) error {
 		return err
 	}
 
-	// Create the wallet.
+	err = CreateWallet(cfg, seed, privPass, pubPass)
+	if err != nil {
+		return err
+	}
+
+	fmt.Println("The wallet has been created successfully.")
+	printWalletFinishSetup()
+	return nil
+}
+
+// CreateWallet uses the provided seed, and passphrases to create a new
+// wallet address manager
+func CreateWallet(cfg *config, seed, privPass, pubPass []byte) error {
+	log.Infof("Creating the wallet...")
+
+	netDir := networkDir(cfg.DataDir, activeNet.Params)
 	dbPath := filepath.Join(netDir, walletDbName)
-	fmt.Println("Creating the wallet...")
 
 	// Create the wallet database backed by bolt db.
 	db, err := walletdb.Create("bdb", dbPath)
@@ -423,35 +437,12 @@ func createWalletWizard(cfg *config) error {
 	if err != nil {
 		return err
 	}
-	manager, err := waddrmgr.Create(namespace, seed, []byte(pubPass),
-		[]byte(privPass), activeNet.Params, nil)
+	manager, err := waddrmgr.Create(namespace, seed, pubPass,
+		privPass, activeNet.Params, nil)
 	if err != nil {
 		return err
 	}
 
-	// Import the addresses in the legacy keystore to the new wallet if
-	// any exist.
-	if legacyKeyStore != nil {
-		fmt.Println("Importing addresses from existing wallet...")
-		if err := manager.Unlock([]byte(privPass)); err != nil {
-			return err
-		}
-		if err := convertLegacyKeystore(legacyKeyStore, manager); err != nil {
-			return err
-		}
-
-		legacyKeyStore.Lock()
-		legacyKeyStore = nil
-
-		// Remove the legacy key store.
-		if err := os.Remove(keystorePath); err != nil {
-			fmt.Printf("WARN: Failed to remove legacy wallet "+
-				"from'%s'\n", keystorePath)
-		}
-	}
-
 	manager.Close()
-	fmt.Println("The wallet has been created successfully.")
-	printWalletFinishSetup()
 	return nil
 }

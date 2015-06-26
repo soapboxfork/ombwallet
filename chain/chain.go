@@ -135,6 +135,12 @@ func (c *Client) Stop() {
 	}
 }
 
+// IsConnected reports if the wallet seems to have a live connection
+// to a fullnode, which will provide data to it.
+func (c *Client) IsConnected() bool {
+	return c.started
+}
+
 // WaitForShutdown blocks until both the client has finished disconnecting
 // and all handlers have exited.
 func (c *Client) WaitForShutdown() {

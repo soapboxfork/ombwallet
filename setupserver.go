@@ -7,9 +7,13 @@ import (
 	"path/filepath"
 
 	"github.com/btcsuite/btcd/btcjson"
+	"github.com/btcsuite/btcutil/hdkeychain"
 	"github.com/btcsuite/btcwallet/legacy/keystore"
+	"github.com/soapboxsys/ombudslib/rpcexten"
 	"github.com/soapboxsys/ombwallet/chain"
 )
+
+var setupChan chan struct{}
 
 func waitForSetup(cfg *config) error {
 
@@ -47,6 +51,7 @@ func waitForSetup(cfg *config) error {
 func startInitServer(cfg *config) error {
 	listenAddr := net.JoinHostPort("", cfg.Profile)
 	log.Infof("Initialization server listening on %s", listenAddr)
+	setupChan = make(chan struct{}, 10)
 
 	server, err := newRPCServer(cfg.SvrListeners, cfg.RPCMaxClients, 1)
 	if err != nil {
@@ -55,7 +60,8 @@ func startInitServer(cfg *config) error {
 	server.limitedStart()
 	//time.Sleep(10 * time.Second)
 	//server.Stop()
-	<-server.quit
+	<-setupChan
+	server.Stop()
 
 	return nil
 }
@@ -71,28 +77,68 @@ func limitedHandlerLookup(method string) (f requestHandler, ok bool) {
 }
 
 var limitedRpcHandlers = map[string]requestHandler{
-	"getinfo":          Unsupported,
-	"walletsetup":      WalletSetupParams,
-	"walletstatecheck": uninitializedState,
+	"getinfo":        Unsupported,
+	"walletsetup":    WalletSetupParams,
+	"getwalletstate": uninitializedState,
+}
+
+// initializedState checks to see if the wallet and chain server is
+// connected and responds appropriately.
+func initializedState(w *Wallet, chain *chain.Client, cmd btcjson.Cmd) (interface{}, error) {
+
+	res := &rpcexten.GetWalletStateResult{}
+	if chain != nil {
+		res.HasChainSvr = chain.IsConnected()
+	}
+
+	if w != nil {
+		res.HasWallet = true
+		res.ChainSynced = w.ChainSynced()
+	}
+
+	return res, nil
 }
 
 // uninitializedState responds to walletstate check requests with a
 // response that indicates the wallet is in its initial un-created
 // state.
 func uninitializedState(*Wallet, *chain.Client, btcjson.Cmd) (interface{}, error) {
-	infoResult := &btcjson.InfoResult{
-		Proxy: version(),
+	stateRes := &rpcexten.GetWalletStateResult{
+		HasWallet:   false,
+		HasChainSvr: false,
 	}
-	return infoResult, nil
+	return stateRes, nil
 }
 
-func WalletSetupParams(*Wallet, *chain.Client, btcjson.Cmd) (interface{}, error) {
-	infoResult := &btcjson.InfoResult{
-		Proxy:  version(),
-		Blocks: 9001,
-	}
-	// Configure the wallet
+func WalletSetupParams(w *Wallet, c *chain.Client, icmd btcjson.Cmd) (interface{}, error) {
+	cmd := icmd.(*rpcexten.WalletSetupCmd)
 
-	// If successful pull the stop channel lever.
-	return infoResult, nil
+	// Assert that the passphrase is at least 6 characters
+	var privPass = []byte(cmd.Passphrase)
+	if len(privPass) < 6 {
+		msg := "Wallet Passphrase is too short!"
+		log.Infof(msg)
+		return nil, btcjson.Error{
+			Code:    -1,
+			Message: msg,
+		}
+	}
+
+	// Configure the wallet
+	seed, err := hdkeychain.GenerateSeed(hdkeychain.RecommendedSeedLen)
+	if err != nil {
+		log.Infof("Generating a seed failed with: %s", err)
+		return nil, btcjson.ErrWallet
+	}
+
+	err = CreateWallet(cfg, seed, privPass, []byte(defaultPubPassphrase))
+	if err != nil {
+		log.Infof("Creating wallet failed with: %s", err)
+		return nil, btcjson.ErrWallet
+	}
+
+	// If successful pull the stop lever.
+	close(setupChan)
+
+	return "success", nil
 }

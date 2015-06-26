@@ -1363,6 +1363,7 @@ var rpcHandlers = map[string]requestHandler{
 	// NOTE extends the wallet functionality
 	"sendbulletin":    SendBulletin,
 	"composebulletin": ComposeBulletin,
+	"getwalletstate":  initializedState,
 
 	// Extensions to the reference client JSON-RPC API
 	"exportwatchingwallet": ExportWatchingWallet,
