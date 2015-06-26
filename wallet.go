@@ -1210,8 +1210,12 @@ func (w *Wallet) NewAddress() (btcutil.Address, error) {
 	for i, addr := range addrs {
 		utilAddrs[i] = addr.Address()
 	}
-	if err := w.chainSvr.NotifyReceived(utilAddrs); err != nil {
-		return nil, err
+
+	// NOTICE a hack to get around the default update process
+	if w.chainSvr != nil {
+		if err := w.chainSvr.NotifyReceived(utilAddrs); err != nil {
+			return nil, err
+		}
 	}
 
 	return utilAddrs[0], nil

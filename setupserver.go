@@ -53,7 +53,7 @@ func startInitServer(cfg *config) error {
 	log.Infof("Initialization server listening on %s", listenAddr)
 	setupChan = make(chan struct{}, 10)
 
-	server, err := newRPCServer(cfg.SvrListeners, cfg.RPCMaxClients, 1)
+	server, err := newRPCServer(cfg.SvrListeners, cfg.RPCMaxClients, 5)
 	if err != nil {
 		return err
 	}
@@ -137,8 +137,14 @@ func WalletSetupParams(w *Wallet, c *chain.Client, icmd btcjson.Cmd) (interface{
 		return nil, btcjson.ErrWallet
 	}
 
+	addr, err := GetInitialAddress()
+	if err != nil {
+		log.Infof("Creating the first addr failed: %s", err)
+		return nil, btcjson.ErrWallet
+	}
+
 	// If successful pull the stop lever.
 	close(setupChan)
 
-	return "success", nil
+	return addr.String(), nil
 }

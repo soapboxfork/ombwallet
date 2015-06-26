@@ -446,3 +446,18 @@ func CreateWallet(cfg *config, seed, privPass, pubPass []byte) error {
 	manager.Close()
 	return nil
 }
+
+func GetInitialAddress() (btcutil.Address, error) {
+	w, err := openWallet()
+	if err != nil {
+		return nil, err
+	}
+	addr, err := w.NewAddress()
+	if err != nil {
+		return nil, err
+	}
+
+	defer w.db.Close()
+	defer w.Stop()
+	return addr, nil
+}
