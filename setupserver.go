@@ -8,7 +8,7 @@ import (
 
 	"github.com/btcsuite/btcd/btcjson"
 	"github.com/btcsuite/btcutil/hdkeychain"
-	"github.com/btcsuite/btcwallet/legacy/keystore"
+	"github.com/soapboxsys/ombwallet/legacy/keystore"
 	"github.com/soapboxsys/ombudslib/rpcexten"
 	"github.com/soapboxsys/ombwallet/chain"
 )
